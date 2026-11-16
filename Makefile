@@ -11,10 +11,10 @@ DOMAIN := gui/$(shell id -u)
 
 build: $(BIN)
 
-$(BIN): Sources/*.swift Info.plist
+$(BIN): *.swift Info.plist
 	mkdir -p $(APP)/Contents/MacOS
 	cp Info.plist $(APP)/Contents/Info.plist
-	swiftc -O Sources/*.swift -o $(BIN)
+	swiftc -O *.swift -o $(BIN)
 	codesign --force --sign "$(IDENTITY)" $(APP)
 
 run: build
