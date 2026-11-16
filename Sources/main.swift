@@ -2,7 +2,9 @@ import AppKit
 
 signal(SIGPIPE, SIG_IGN)
 
-let follower = Follower(verbose: CommandLine.arguments.contains("--verbose"))
+let arguments = CommandLine.arguments
+let delayMilliseconds = arguments.firstIndex(of: "--delay").flatMap { arguments.indices.contains($0 + 1) ? Double(arguments[$0 + 1]) : nil } ?? 200
+let follower = Follower(verbose: arguments.contains("--verbose"), delay: delayMilliseconds / 1000)
 var tap: CFMachPort?
 
 if !CGPreflightListenEventAccess() {

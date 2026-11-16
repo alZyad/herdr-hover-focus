@@ -27,6 +27,8 @@ final class Follower {
     private static let mobileWidthThreshold = 64
 
     private let verbose: Bool
+    private let delay: TimeInterval
+    private var pending: (paneId: String, work: DispatchWorkItem)?
     private let padding = GhosttyPadding.load()
     private let ghosttyPid = Cached(ttl: 5) { Ghostty.pid }
     private let windows = Cached(ttl: 0.25) { Window.onScreen() }
@@ -38,19 +40,32 @@ final class Follower {
         ttys.value.compactMap(HerdrClients.size(of:))
     }
 
-    init(verbose: Bool) {
+    init(verbose: Bool, delay: TimeInterval) {
         self.verbose = verbose
-        log("padding \(padding)")
+        self.delay = delay
+        log("padding \(padding), delay \(delay)s")
     }
 
     func mouseMoved(to point: CGPoint) {
+        guard let paneId = unfocusedPane(at: point) else {
+            cancelPending()
+            return
+        }
+        guard pending?.paneId != paneId else { return }
+        cancelPending()
+        let work = DispatchWorkItem { [weak self] in self?.focus(paneId) }
+        pending = (paneId, work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func unfocusedPane(at point: CGPoint) -> String? {
         guard Ghostty.isFrontmost,
               let grid = grid(under: point),
               grid.cols > Self.mobileWidthThreshold,
               let cell = grid.cell(at: point),
               let layout = layout.value,
               !layout.zoomed
-        else { return }
+        else { return nil }
 
         let colOffset = grid.cols - layout.area.width
         let rowOffset = Herdr.tabBarAtBottom ? 0 : grid.rows - layout.area.height
@@ -59,11 +74,21 @@ final class Follower {
 
         guard let pane = layout.panes.first(where: { $0.rect.contains(col: col, row: row) }),
               pane.paneId != layout.focusedPaneId
-        else { return }
+        else { return nil }
+        return pane.paneId
+    }
 
-        let focused = Herdr.focus(paneId: pane.paneId)
-        self.layout.invalidate()
-        log("focus \(pane.paneId) at cell \(cell) -> \(focused ? "ok" : "failed")")
+    private func focus(_ paneId: String) {
+        pending = nil
+        guard Ghostty.isFrontmost else { return }
+        let focused = Herdr.focus(paneId: paneId)
+        layout.invalidate()
+        log("focus \(paneId) -> \(focused ? "ok" : "failed")")
+    }
+
+    private func cancelPending() {
+        pending?.work.cancel()
+        pending = nil
     }
 
     private func grid(under point: CGPoint) -> Grid? {
